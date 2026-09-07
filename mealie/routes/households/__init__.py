@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from . import (
     controller_cookbooks,
+    controller_food_inventory,
     controller_group_notifications,
     controller_group_recipe_actions,
     controller_household_self_service,
@@ -15,6 +16,7 @@ from . import (
 router = APIRouter()
 
 router.include_router(controller_cookbooks.router)
+router.include_router(controller_food_inventory.router)
 router.include_router(controller_group_notifications.router)
 router.include_router(controller_group_recipe_actions.router)
 router.include_router(controller_household_self_service.router)

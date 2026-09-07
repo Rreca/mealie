@@ -58,6 +58,12 @@ from .household import (
     UpdateHousehold,
     UpdateHouseholdAdmin,
 )
+from .household_food_inventory import (
+    HouseholdFoodInventoryOut,
+    HouseholdFoodInventoryPagination,
+    HouseholdFoodInventorySave,
+    HouseholdFoodInventoryUpdate,
+)
 from .household_permissions import SetPermissions
 from .household_preferences import (
     CreateHouseholdPreferences,
@@ -137,4 +143,8 @@ __all__ = [
     "ReadInviteToken",
     "SaveInviteToken",
     "SetPermissions",
+    "HouseholdFoodInventoryOut",
+    "HouseholdFoodInventoryPagination",
+    "HouseholdFoodInventorySave",
+    "HouseholdFoodInventoryUpdate",
 ]

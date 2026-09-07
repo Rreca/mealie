@@ -111,6 +111,8 @@ households_recipe_actions = "/api/households/recipe-actions"
 """`/api/households/recipe-actions`"""
 households_self = "/api/households/self"
 """`/api/households/self`"""
+households_self_food_inventory = "/api/households/self/food-inventory"
+"""`/api/households/self/food-inventory`"""
 households_shopping_items = "/api/households/shopping/items"
 """`/api/households/shopping/items`"""
 households_shopping_items_create_bulk = "/api/households/shopping/items/create-bulk"
@@ -386,6 +388,11 @@ def households_recipe_actions_item_id(item_id):
 def households_recipe_actions_item_id_trigger_recipe_slug(item_id, recipe_slug):
     """`/api/households/recipe-actions/{item_id}/trigger/{recipe_slug}`"""
     return f"{prefix}/households/recipe-actions/{item_id}/trigger/{recipe_slug}"
+
+
+def households_self_food_inventory_food_id(food_id):
+    """`/api/households/self/food-inventory/{food_id}`"""
+    return f"{prefix}/households/self/food-inventory/{food_id}"
 
 
 def households_self_recipes_recipe_slug(recipe_slug):

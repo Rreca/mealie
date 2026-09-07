@@ -14,6 +14,20 @@ class UnexpectedNone(Exception):
         return f"{self.message}"
 
 
+class FoodInventoryUnitConflict(Exception):
+    """Raised when merging foods would combine two positive stock quantities whose units cannot
+    be safely combined (different unit_id, or a null unit_id on either side). The merge is aborted
+    without modifying any food or inventory row. Surfaced to the client as HTTP 409.
+    """
+
+    def __init__(self, message: str = "Cannot merge foods: conflicting stock units in one or more households."):
+        self.message = message
+        super().__init__(self.message)
+
+    def __str__(self):
+        return f"{self.message}"
+
+
 class PermissionDenied(Exception):
     """
     This exception is raised when a user tries to access a resource that they do not have permission to access.

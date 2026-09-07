@@ -16,6 +16,7 @@ from .._model_utils.guid import GUID
 if TYPE_CHECKING:
     from ..group import Group
     from ..household import Household
+    from ..household.food_inventory import HouseholdFoodInventory
     from .recipe import RecipeModel
 
 households_to_ingredient_foods = sa.Table(
@@ -170,6 +171,13 @@ class IngredientFoodModel(SqlAlchemyBase, BaseMixins):
     )
     aliases: Mapped[list["IngredientFoodAliasModel"]] = orm.relationship(
         "IngredientFoodAliasModel",
+        back_populates="food",
+        cascade="all, delete, delete-orphan",
+    )
+    # Deleting a food removes its per-household stock. Handled at the ORM level (cascade) so it
+    # works on SQLite too, where ON DELETE CASCADE is not enforced (foreign_keys pragma is off).
+    inventory_items: Mapped[list["HouseholdFoodInventory"]] = orm.relationship(
+        "HouseholdFoodInventory",
         back_populates="food",
         cascade="all, delete, delete-orphan",
     )
