@@ -1,8 +1,9 @@
 from functools import cached_property
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import UUID4
 
+from mealie.core.exceptions import FoodInventoryUnitConflict
 from mealie.routes._base.base_controllers import BaseUserController
 from mealie.routes._base.controller import controller
 from mealie.routes._base.mixins import HttpRepo
@@ -58,6 +59,8 @@ class IngredientFoodsController(BaseUserController):
         try:
             self.repo.merge(data.from_food, data.to_food)
             return SuccessResponse.respond("Successfully merged foods")
+        except FoodInventoryUnitConflict as e:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
         except Exception as e:
             self.logger.error(e)
             raise HTTPException(500, "Failed to merge foods") from e

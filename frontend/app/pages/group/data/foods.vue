@@ -172,13 +172,41 @@
         </v-icon>
       </template>
 
-      <template #[`item.substitutions`]="{ item }">
-        {{ item.substitutions ? item.substitutions.length : 0 }}
-      </template>
+<template #[`item.stock`]="{ item }">
+  <div class="d-flex align-center" style="gap: 4px; min-width: 160px;">
+    <v-text-field
+      :model-value="stockDraft(item.id)"
+      type="number"
+      min="0"
+      step="any"
+      density="compact"
+      variant="outlined"
+      hide-details
+      single-line
+      style="max-width: 110px;"
+      :disabled="stockLoading"
+      :loading="stockLoading"
+      @update:model-value="setStockDraft(item.id, $event)"
+      @keyup.enter="saveStock(item.id)"
+    />
+    <BaseButton
+      small
+      :loading="stockSavingId === item.id"
+      :disabled="stockLoading"
+      @click="saveStock(item.id)"
+    >
+      {{ $t("general.save") }}
+    </BaseButton>
+  </div>
+</template>
 
-      <template #[`item.createdAt`]="{ item }">
-        {{ item.createdAt ? $d(new Date(item.createdAt)) : "" }}
-      </template>
+<template #[`item.substitutions`]="{ item }">
+  {{ item.substitutions ? item.substitutions.length : 0 }}
+</template>
+
+<template #[`item.createdAt`]="{ item }">
+  {{ item.createdAt ? $d(new Date(item.createdAt)) : "" }}
+</template>
 
       <template #table-button-bottom>
         <BaseButton @click="seedDialog = true">
@@ -235,6 +263,7 @@ import type {
 import MultiPurposeLabel from "~/components/Domain/ShoppingList/MultiPurposeLabel.vue";
 import { useLocales } from "~/composables/use-locales";
 import { normalizeFilter } from "~/composables/use-utils";
+import { alert } from "~/composables/use-toast";
 import { useFoodStore, useLabelStore } from "~/composables/store";
 import type { MultiPurposeLabelOut } from "~/lib/api/types/labels";
 import type { AutoFormItems } from "~/types/auto-forms";
@@ -297,15 +326,21 @@ const tableHeaders: TableHeaders[] = [
     show: true,
     sortable: true,
   },
-  {
-    text: i18n.t("data-pages.foods.substitutions"),
-    value: "substitutions",
-    show: true,
-    sortable: true,
-    sort: (subs1: IngredientFoodSubstitution[] | null, subs2: IngredientFoodSubstitution[] | null) => {
-      return (subs1?.length || 0) - (subs2?.length || 0);
-    },
+ {
+  text: i18n.t("data-pages.foods.stock"),
+  value: "stock",
+  show: true,
+  sortable: false,
+},
+{
+  text: i18n.t("data-pages.foods.substitutions"),
+  value: "substitutions",
+  show: true,
+  sortable: true,
+  sort: (subs1: IngredientFoodSubstitution[] | null, subs2: IngredientFoodSubstitution[] | null) => {
+    return (subs1?.length || 0) - (subs2?.length || 0);
   },
+},
   {
     text: i18n.t("general.date-added"),
     value: "createdAt",
@@ -317,6 +352,76 @@ const tableHeaders: TableHeaders[] = [
 const userHousehold = computed(() => auth.user.value?.householdSlug || "");
 const userGroup = computed(() => auth.user.value?.groupSlug || "");
 const foodStore = useFoodStore();
+
+// ============================================================
+// Stock (HouseholdFoodInventory) — kept in a SEPARATE map keyed by foodId.
+// This is intentionally independent of the IngredientFood object and of the
+// "In possession" (householdsWithIngredientFood) flag. We never mutate the
+// generated IngredientFood type with stock data.
+const stockByFoodId = ref<Record<string, number>>({});
+const stockLoading = ref(false);
+const stockSavingId = ref<string | null>(null);
+// Local edit buffer so typing doesn't mutate the persisted map until save.
+const stockDraftByFoodId = ref<Record<string, number | string>>({});
+
+async function loadInventory() {
+  stockLoading.value = true;
+  try {
+    // perPage=-1 loads the full inventory so a food absent from the map is a true 0
+    // (never a false 0 from an unloaded page).
+    const { data } = await userApi.foodInventory.getAll(1, -1);
+    const map: Record<string, number> = {};
+    for (const item of data?.items ?? []) {
+      map[item.foodId] = item.quantity;
+    }
+    stockByFoodId.value = map;
+  }
+  finally {
+    stockLoading.value = false;
+  }
+}
+
+function stockValue(foodId: string): number {
+  return stockByFoodId.value[foodId] ?? 0;
+}
+
+function stockDraft(foodId: string): number | string {
+  return stockDraftByFoodId.value[foodId] ?? stockValue(foodId);
+}
+
+function setStockDraft(foodId: string, value: number | string) {
+  stockDraftByFoodId.value = { ...stockDraftByFoodId.value, [foodId]: value };
+}
+
+async function saveStock(foodId: string) {
+  const raw = stockDraft(foodId);
+  const quantity = typeof raw === "string" ? Number.parseFloat(raw) : raw;
+  if (!Number.isFinite(quantity) || quantity < 0) {
+    alert.error(i18n.t("data-pages.foods.stock-save-failed"));
+    return;
+  }
+
+  stockSavingId.value = foodId;
+  try {
+    const { data } = await userApi.foodInventory.upsertByFoodId(foodId, { quantity });
+    if (data) {
+      // Update from the server response (no optimistic update).
+      stockByFoodId.value = { ...stockByFoodId.value, [foodId]: data.quantity };
+      const { [foodId]: _removed, ...rest } = stockDraftByFoodId.value;
+      stockDraftByFoodId.value = rest;
+      alert.success(i18n.t("data-pages.foods.stock-saved"));
+    }
+    else {
+      alert.error(i18n.t("data-pages.foods.stock-save-failed"));
+    }
+  }
+  catch {
+    alert.error(i18n.t("data-pages.foods.stock-save-failed"));
+  }
+  finally {
+    stockSavingId.value = null;
+  }
+}
 const foods = computed(() =>
   foodStore.store.value.map((food) => {
     const onHand = food.householdsWithIngredientFood?.includes(userHousehold.value) || false;
@@ -326,6 +431,7 @@ const foods = computed(() =>
 
 onMounted(() => {
   foodStore.actions.refresh();
+  loadInventory();
 });
 
 // ============================================================

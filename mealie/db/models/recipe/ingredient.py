@@ -17,6 +17,7 @@ from .._model_utils.guid import GUID
 if TYPE_CHECKING:
     from ..group import Group
     from ..household import Household
+    from ..household.food_inventory import HouseholdFoodInventory
     from .recipe import RecipeModel
 
 households_to_ingredient_foods = sa.Table(
@@ -234,30 +235,40 @@ class IngredientFoodModel(SqlAlchemyBase, BaseMixins):
         back_populates="food",
         cascade="all, delete, delete-orphan",
     )
-    # substitutions this food offers, e.g. chicken stock -> chicken broth
-    substitutions: Mapped[list["IngredientFoodSubstitutionModel"]] = orm.relationship(
-        "IngredientFoodSubstitutionModel",
-        back_populates="food",
-        foreign_keys="IngredientFoodSubstitutionModel.food_id",
-        cascade="all, delete, delete-orphan",
-        order_by="IngredientFoodSubstitutionModel.position",
-        collection_class=ordering_list("position"),
-    )
-    # substitutions pointing at this food; exists so deleting a food cleans up the ones aimed at it
-    substitution_references: Mapped[list["IngredientFoodSubstitutionModel"]] = orm.relationship(
-        "IngredientFoodSubstitutionModel",
-        back_populates="substitute_food",
-        foreign_keys="IngredientFoodSubstitutionModel.substitute_food_id",
-        cascade="all, delete, delete-orphan",
-    )
-    # the same, for the recipe tier: without it a deleted food leaves ingredient substitutions
-    # pointing at a row that is gone, which renders as an empty popover on SQLite and fails the
-    # foreign key outright on Postgres
-    recipe_substitution_references: Mapped[list["RecipeIngredientSubstitutionModel"]] = orm.relationship(
-        "RecipeIngredientSubstitutionModel",
-        back_populates="substitute_food",
-        cascade="all, delete, delete-orphan",
-    )
+# Deleting a food removes its per-household stock. Handled at the ORM level (cascade) so it
+# works on SQLite too, where ON DELETE CASCADE is not enforced (foreign_keys pragma is off).
+inventory_items: Mapped[list["HouseholdFoodInventory"]] = orm.relationship(
+    "HouseholdFoodInventory",
+    back_populates="food",
+    cascade="all, delete, delete-orphan",
+)
+
+# substitutions this food offers, e.g. chicken stock -> chicken broth
+substitutions: Mapped[list["IngredientFoodSubstitutionModel"]] = orm.relationship(
+    "IngredientFoodSubstitutionModel",
+    back_populates="food",
+    foreign_keys="IngredientFoodSubstitutionModel.food_id",
+    cascade="all, delete, delete-orphan",
+    order_by="IngredientFoodSubstitutionModel.position",
+    collection_class=ordering_list("position"),
+)
+
+# substitutions pointing at this food; exists so deleting a food cleans up the ones aimed at it
+substitution_references: Mapped[list["IngredientFoodSubstitutionModel"]] = orm.relationship(
+    "IngredientFoodSubstitutionModel",
+    back_populates="substitute_food",
+    foreign_keys="IngredientFoodSubstitutionModel.substitute_food_id",
+    cascade="all, delete, delete-orphan",
+)
+
+# the same, for the recipe tier: without it a deleted food leaves ingredient substitutions
+# pointing at a row that is gone, which renders as an empty popover on SQLite and fails the
+# foreign key outright on Postgres
+recipe_substitution_references: Mapped[list["RecipeIngredientSubstitutionModel"]] = orm.relationship(
+    "RecipeIngredientSubstitutionModel",
+    back_populates="substitute_food",
+    cascade="all, delete, delete-orphan",
+)
     extras: Mapped[list[IngredientFoodExtras]] = orm.relationship("IngredientFoodExtras", cascade="all, delete-orphan")
 
     label_id: FilterableColumn[GUID | None] = mapped_column(GUID, ForeignKey("multi_purpose_labels.id"), index=True)

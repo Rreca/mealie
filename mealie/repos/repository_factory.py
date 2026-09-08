@@ -12,6 +12,7 @@ from mealie.db.models.group.exports import GroupDataExportsModel
 from mealie.db.models.group.preferences import GroupPreferencesModel
 from mealie.db.models.household.cookbook import CookBook
 from mealie.db.models.household.events import GroupEventNotifierModel
+from mealie.db.models.household.food_inventory import HouseholdFoodInventory
 from mealie.db.models.household.household import Household
 from mealie.db.models.household.household_to_recipe import HouseholdToRecipe
 from mealie.db.models.household.invite_tokens import GroupInviteToken
@@ -58,6 +59,7 @@ from mealie.schema.household.group_shopping_list import (
     ShoppingListRecipeRefOut,
 )
 from mealie.schema.household.household import HouseholdInDB, HouseholdRecipeOut
+from mealie.schema.household.household_food_inventory import HouseholdFoodInventoryOut
 from mealie.schema.household.household_preferences import ReadHouseholdPreferences
 from mealie.schema.household.invite_token import ReadInviteToken
 from mealie.schema.household.webhook import ReadWebhook
@@ -353,6 +355,19 @@ class AllRepositories:
             PK_ID,
             GroupRecipeAction,
             GroupRecipeActionOut,
+            group_id=self.group_id,
+            household_id=self.household_id,
+        )
+
+    @cached_property
+    def household_food_inventory(
+        self,
+    ) -> HouseholdRepositoryGeneric[HouseholdFoodInventoryOut, HouseholdFoodInventory]:
+        return HouseholdRepositoryGeneric(
+            self.session,
+            PK_ID,
+            HouseholdFoodInventory,
+            HouseholdFoodInventoryOut,
             group_id=self.group_id,
             household_id=self.household_id,
         )

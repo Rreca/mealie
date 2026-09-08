@@ -188,6 +188,28 @@ export interface HouseholdCreate {
   groupId?: string | null;
   name: string;
 }
+export interface HouseholdFoodInventoryOut {
+  id: string;
+  groupId: string;
+  householdId: string;
+  foodId: string;
+  quantity: number;
+  unitId?: string | null;
+  food?: IngredientFood | null;
+  unit?: IngredientUnit | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+export interface HouseholdFoodInventorySave {
+  groupId: string;
+  householdId: string;
+  foodId: string;
+  quantity?: number;
+  unitId?: string | null;
+}
+export interface HouseholdFoodInventoryUpdate {
+  quantity: number;
+}
 export interface HouseholdInDB {
   groupId: string;
   name: string;

@@ -1,7 +1,11 @@
 from pydantic import UUID4
-from sqlalchemy import select, update
+
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import joinedload
 
+
+from mealie.core.exceptions import FoodInventoryUnitConflict
+from mealie.db.models.household.food_inventory import HouseholdFoodInventory
 from mealie.db.models.household.shopping_list import ShoppingListItem
 from mealie.db.models.recipe.ingredient import IngredientFoodModel, RecipeIngredientSubstitutionModel
 from mealie.schema.recipe.recipe_ingredient import IngredientFood
@@ -14,6 +18,90 @@ class RepositoryFood(GroupRepositoryGeneric[IngredientFood, IngredientFoodModel]
         stmt = select(self.model).filter_by(**self._filter_builder(**{"id": id}))
         return self.session.execute(stmt).scalars().one()
 
+    def _merge_inventory(self, from_food: UUID4, to_food: UUID4) -> None:
+        """Consolidate HouseholdFoodInventory rows from `from_food` into `to_food`.
+
+        Runs within the caller's transaction (no commit here). Validates ALL households first and
+        raises FoodInventoryUnitConflict before mutating anything if any household has a conflict,
+        so the merge is never applied partially.
+
+        Per household policy:
+        - only source has a row            -> repoint the row to the destination food
+        - only destination has a row       -> keep it (nothing to do)
+        - both rows, source quantity == 0  -> delete source, keep destination
+        - both rows, destination qty == 0  -> copy source quantity+unit into destination, delete source
+        - both positive, same non-null unit_id -> sum quantities, delete source
+        - both positive, any null unit_id  -> conflict (409)
+        - both positive, different unit_id -> conflict (409)
+        No unit conversions are performed. No quantity is ever silently discarded.
+        """
+        from_rows = {
+            row.household_id: row
+            for row in self.session.execute(
+                select(HouseholdFoodInventory).where(HouseholdFoodInventory.food_id == from_food)
+            )
+            .scalars()
+            .all()
+        }
+        to_rows = {
+            row.household_id: row
+            for row in self.session.execute(
+                select(HouseholdFoodInventory).where(HouseholdFoodInventory.food_id == to_food)
+            )
+            .scalars()
+            .all()
+        }
+
+        # Validation pass: detect any conflict before mutating anything.
+        for household_id, from_row in from_rows.items():
+            to_row = to_rows.get(household_id)
+            if to_row is None:
+                continue
+
+            from_positive = (from_row.quantity or 0) > 0
+            to_positive = (to_row.quantity or 0) > 0
+            if from_positive and to_positive:
+                if from_row.unit_id is None or to_row.unit_id is None or from_row.unit_id != to_row.unit_id:
+                    raise FoodInventoryUnitConflict()
+
+        # Apply pass: no conflicts, safe to mutate. We use direct SQL statements (like the
+        # ShoppingListItem repoint above) rather than ORM instance mutations, so the delete-orphan
+        # cascade on IngredientFoodModel.inventory_items does not fight with our changes when the
+        # source food is deleted.
+        for household_id, from_row in from_rows.items():
+            to_row = to_rows.get(household_id)
+
+            if to_row is None:
+                # Only source has a row: repoint it to the destination food.
+                self.session.execute(
+                    update(HouseholdFoodInventory)
+                    .where(HouseholdFoodInventory.id == from_row.id)
+                    .values(food_id=to_food)
+                )
+                continue
+
+            from_positive = (from_row.quantity or 0) > 0
+            to_positive = (to_row.quantity or 0) > 0
+
+            if not from_positive:
+                # Source is 0: keep destination, drop source.
+                new_quantity = to_row.quantity
+                new_unit_id = to_row.unit_id
+            elif not to_positive:
+                # Destination is 0, source positive: copy source quantity + unit into destination.
+                new_quantity = from_row.quantity
+                new_unit_id = from_row.unit_id
+            else:
+                # Both positive with matching non-null unit_id (validated above): sum.
+                new_quantity = (to_row.quantity or 0) + (from_row.quantity or 0)
+                new_unit_id = to_row.unit_id
+
+            self.session.execute(
+                update(HouseholdFoodInventory)
+                .where(HouseholdFoodInventory.id == to_row.id)
+                .values(quantity=new_quantity, unit_id=new_unit_id)
+            )
+            self.session.execute(delete(HouseholdFoodInventory).where(HouseholdFoodInventory.id == from_row.id))
     def _merge_substitutions(self, from_model: IngredientFoodModel, to_model: IngredientFoodModel) -> None:
         """
         Moves both directions of the merged-away food's substitutions onto the target.
@@ -108,6 +196,17 @@ class RepositoryFood(GroupRepositoryGeneric[IngredientFood, IngredientFoodModel]
         self.session.execute(
             update(ShoppingListItem).where(ShoppingListItem.food_id == from_food).values(food_id=to_food)
         )
+
+        # Consolidate stock inventory before deleting the source food. This validates all
+        # households and raises FoodInventoryUnitConflict (before any mutation) on conflict,
+        # so the whole merge is aborted rather than losing inventory to the CASCADE.
+        self._merge_inventory(from_food, to_food)
+
+        # _merge_inventory moved/merged inventory rows with direct SQL. Expire ONLY the source
+        # food's inventory_items collection so the delete-orphan cascade reloads it (now empty for
+        # repointed rows) instead of fighting our direct changes. We intentionally do not flush or
+        # expire other attributes so the reassigned `ingredients` are preserved.
+        self.session.expire(from_model, ["inventory_items"])
 
         try:
             self.session.delete(from_model)

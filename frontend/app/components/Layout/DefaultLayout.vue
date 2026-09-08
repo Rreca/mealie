@@ -283,6 +283,12 @@ const topLinks = computed<SideBarLink[]>(() => [
         title: i18n.t("tool.tools"),
         restricted: true,
       },
+      {
+        icon: $globals.icons.foods,
+        to: "/group/data/foods",
+        title: i18n.t("general.foods"),
+        restricted: true,
+      },
     ],
   },
 ]);

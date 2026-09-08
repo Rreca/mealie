@@ -8,6 +8,7 @@ import { CategoriesAPI } from "./user/organizer-categories";
 import { TagsAPI } from "./user/organizer-tags";
 import { UtilsAPI } from "./user/utils";
 import { FoodAPI } from "./user/recipe-foods";
+import { HouseholdFoodInventoryAPI } from "./user/household-food-inventory";
 import { UnitAPI } from "./user/recipe-units";
 import { CookbookAPI } from "./user/group-cookbooks";
 import { GroupRecipeActionsAPI } from "./user/group-recipe-actions";
@@ -37,6 +38,7 @@ export class UserApiClient {
   public tags: TagsAPI;
   public utils: UtilsAPI;
   public foods: FoodAPI;
+  public foodInventory: HouseholdFoodInventoryAPI;
   public units: UnitAPI;
   public cookbooks: CookbookAPI;
   public groupRecipeActions: GroupRecipeActionsAPI;
@@ -63,6 +65,7 @@ export class UserApiClient {
     this.tags = new TagsAPI(requests);
     this.units = new UnitAPI(requests);
     this.foods = new FoodAPI(requests);
+    this.foodInventory = new HouseholdFoodInventoryAPI(requests);
     this.tools = new ToolsApi(requests);
 
     // Users
