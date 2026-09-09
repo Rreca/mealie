@@ -209,6 +209,24 @@ export interface HouseholdFoodInventorySave {
 }
 export interface HouseholdFoodInventoryUpdate {
   quantity: number;
+  unitId?: string | null;
+}
+export interface RecipeStockComparison {
+  recipeId: string;
+  scale?: number;
+  items?: RecipeStockComparisonItem[];
+}
+export interface RecipeStockComparisonItem {
+  ingredientId?: number | null;
+  food?: IngredientFood | null;
+  unit?: IngredientUnit | null;
+  needed?: number;
+  have?: number;
+  missing?: number;
+  haveUnit?: IngredientUnit | null;
+  comparable?: boolean;
+  noFood?: boolean;
+  unitConflict?: boolean;
 }
 export interface HouseholdInDB {
   groupId: string;

@@ -399,6 +399,11 @@ def households_self_food_inventory_food_id(food_id):
     return f"{prefix}/households/self/food-inventory/{food_id}"
 
 
+def households_self_food_inventory_recipe_comparison(recipe_id):
+    """`/api/households/self/food-inventory/recipe/{recipe_id}/comparison`"""
+    return f"{prefix}/households/self/food-inventory/recipe/{recipe_id}/comparison"
+
+
 def households_self_recipes_recipe_slug(recipe_slug):
     """`/api/households/self/recipes/{recipe_slug}`"""
     return f"{prefix}/households/self/recipes/{recipe_slug}"

@@ -1,6 +1,10 @@
 import { BaseAPI } from "../base/base-clients";
 import { route } from "~/lib/api/base/route";
-import type { HouseholdFoodInventoryOut, HouseholdFoodInventoryUpdate } from "~/lib/api/types/household";
+import type {
+  HouseholdFoodInventoryOut,
+  HouseholdFoodInventoryUpdate,
+  RecipeStockComparison,
+} from "~/lib/api/types/household";
 import type { PaginationData } from "~/lib/api/types/non-generated";
 
 const prefix = "/api";
@@ -8,6 +12,7 @@ const prefix = "/api";
 const routes = {
   inventory: `${prefix}/households/self/food-inventory`,
   inventoryFood: (foodId: string) => `${prefix}/households/self/food-inventory/${foodId}`,
+  recipeComparison: (recipeId: string) => `${prefix}/households/self/food-inventory/recipe/${recipeId}/comparison`,
 };
 
 export class HouseholdFoodInventoryAPI extends BaseAPI {
@@ -18,11 +23,18 @@ export class HouseholdFoodInventoryAPI extends BaseAPI {
     );
   }
 
-  /** Create or update the stock quantity for a food in the current user's household. */
+  /** Create or update the stock quantity (and optional unit) for a food in the household. */
   async upsertByFoodId(foodId: string, payload: HouseholdFoodInventoryUpdate) {
     return await this.requests.put<HouseholdFoodInventoryOut, HouseholdFoodInventoryUpdate>(
       routes.inventoryFood(foodId),
       payload,
+    );
+  }
+
+  /** Compare a recipe's ingredients against the household's stock (needed/have/missing). */
+  async getRecipeComparison(recipeId: string, scale = 1) {
+    return await this.requests.get<RecipeStockComparison>(
+      route(routes.recipeComparison(recipeId), { scale }),
     );
   }
 }

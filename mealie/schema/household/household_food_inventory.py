@@ -21,13 +21,19 @@ def _validate_quantity(v: float) -> float:
 
 
 class HouseholdFoodInventoryUpdate(MealieModel):
-    """Phase 1 request body for the upsert endpoint. Intentionally accepts ONLY `quantity`.
+    """Request body for the upsert endpoint.
 
-    group_id, household_id and food_id are derived from the authenticated user and the path
-    parameter, never from the request body. unit_id is not accepted in Phase 1.
+    Accepts `quantity` (required) and, since Phase 2, an optional `unit_id`. group_id,
+    household_id and food_id are derived from the authenticated user and the path parameter,
+    never from the request body.
+
+    `unit_id` is optional and distinguishes three cases via `model_fields_set` in the
+    controller: omitted (preserve the existing unit), an explicit UUID (set it, after validating
+    it belongs to the user's group), or explicit null (clear the unit / count-based stock).
     """
 
     quantity: float
+    unit_id: UUID4 | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -76,3 +82,45 @@ class HouseholdFoodInventoryOut(MealieModel):
 
 class HouseholdFoodInventoryPagination(PaginationBase):
     items: list[HouseholdFoodInventoryOut]
+
+
+# ==================================================================================================================
+# Phase 2: recipe vs stock comparison
+
+
+class RecipeStockComparisonItem(MealieModel):
+    """One recipe ingredient compared against the household's stock of its food.
+
+    `needed`/`have`/`missing` are expressed in `unit` (the recipe ingredient's unit) whenever the
+    comparison is possible. When the food is missing, quantities can't be compared:
+
+    - `comparable=False` + `no_food=True`: the ingredient has no food, so stock can't be matched.
+    - `comparable=False` + `unit_conflict=True`: the food is stocked but in a unit that can't be
+      converted to the recipe's unit; `have`/`have_unit` are reported as-is and `missing` is set
+      to the full `needed` for safety (do not silently subtract across incompatible units).
+    - `comparable=True`: `missing = max(0, needed - have)` in `unit`.
+    """
+
+    ingredient_id: int | None = None
+    """The RecipeIngredientModel.id this row was computed from, when available."""
+
+    food: IngredientFood | None = None
+    unit: IngredientUnit | None = None
+    """The recipe ingredient's unit (the unit `needed`/`missing` are expressed in)."""
+
+    needed: float = 0
+    have: float = 0
+    missing: float = 0
+
+    have_unit: IngredientUnit | None = None
+    """The stock's own unit. Differs from `unit` only on a unit conflict."""
+
+    comparable: bool = True
+    no_food: bool = False
+    unit_conflict: bool = False
+
+
+class RecipeStockComparison(MealieModel):
+    recipe_id: UUID4
+    scale: float = 1
+    items: list[RecipeStockComparisonItem] = []
