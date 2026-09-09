@@ -63,6 +63,8 @@ from .household_food_inventory import (
     HouseholdFoodInventoryPagination,
     HouseholdFoodInventorySave,
     HouseholdFoodInventoryUpdate,
+    RecipeStockComparison,
+    RecipeStockComparisonItem,
 )
 from .household_permissions import SetPermissions
 from .household_preferences import (
@@ -147,4 +149,6 @@ __all__ = [
     "HouseholdFoodInventoryPagination",
     "HouseholdFoodInventorySave",
     "HouseholdFoodInventoryUpdate",
+    "RecipeStockComparison",
+    "RecipeStockComparisonItem",
 ]

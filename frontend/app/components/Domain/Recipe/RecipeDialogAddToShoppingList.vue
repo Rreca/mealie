@@ -59,6 +59,18 @@
       can-submit
       @submit="addRecipesToList()"
     >
+      <template #custom-card-action>
+        <BaseButton
+          color="info"
+          :loading="onlyMissingLoading"
+          @click="applyOnlyMissing()"
+        >
+          <template #icon>
+            {{ $globals.icons.cartCheck }}
+          </template>
+          {{ $t("recipe.add-only-missing") }}
+        </BaseButton>
+      </template>
       <div style="max-height: 70vh;  overflow-y: auto">
         <v-card
           v-for="(recipeSection, recipeSectionIndex) in recipeIngredientSections"
@@ -194,8 +206,15 @@ import { toRefs } from "@vueuse/core";
 import { useUserApi } from "~/composables/api";
 import { alert } from "~/composables/use-toast";
 import { useShoppingListPreferences } from "~/composables/use-users/preferences";
-import type { RecipeIngredient, ShoppingListAddRecipeParamsBulk, ShoppingListSummary } from "~/lib/api/types/household";
+import type {
+  RecipeIngredient,
+  RecipeStockComparisonItem,
+  ShoppingListAddRecipeParamsBulk,
+  ShoppingListItemCreate,
+  ShoppingListSummary,
+} from "~/lib/api/types/household";
 import type { Recipe } from "~/lib/api/types/recipe";
+import { computeMissingItem, shouldSkipForMissing } from "~/composables/recipes/use-stock-missing";
 import RecipeIngredientListItem from "./RecipeIngredientListItem.vue";
 
 export interface RecipeWithScale extends Recipe {
@@ -252,6 +271,7 @@ const { shoppingListDialog, shoppingListIngredientDialog, shoppingListShowAllTog
 
 const recipeIngredientSections = ref<ShoppingListRecipeIngredientSection[]>([]);
 const selectedShoppingList = ref<ShoppingListSummary | null>(null);
+const onlyMissingLoading = ref(false);
 
 watch([dialog, () => preferences.value.viewAllLists], () => {
   if (dialog.value) {
@@ -431,6 +451,106 @@ function bulkCheckIngredients(value = true) {
       });
     });
   });
+}
+
+async function applyOnlyMissing() {
+  // "Add only missing" is a distinct flow from the legacy "add recipe": it builds shopping list
+  // items directly (via createMany) instead of going through the recipe endpoint. This is
+  // deliberate — the recipe endpoint applies _is_on_hand and would silently drop on-hand foods,
+  // but here HouseholdFoodInventory is the source of truth, so a short food must be added even
+  // if it is flagged on-hand. The legacy "add recipe" button is left completely untouched.
+  if (!selectedShoppingList.value) {
+    return;
+  }
+  const listId = selectedShoppingList.value.id;
+
+  const itemsToCreate: ShoppingListItemCreate[] = [];
+  onlyMissingLoading.value = true;
+  // TEMP DIAGNOSTIC (Option D bug): remove before commit.
+  console.log("[add-only-missing] sections:", JSON.parse(JSON.stringify(recipeIngredientSections.value)));
+  try {
+    for (const recipeSection of recipeIngredientSections.value) {
+      const scale = recipeSection.recipeScale || 1;
+      const { data } = await api.foodInventory.getRecipeComparison(recipeSection.recipeId, scale);
+      console.log("[add-only-missing] comparison for", recipeSection.recipeId, ":", data);
+      if (!data) {
+        continue;
+      }
+
+      // Map foodId -> comparison item (rows are aggregated per food by the backend).
+      const byFood = new Map<string, RecipeStockComparisonItem>();
+      for (const item of data.items ?? []) {
+        if (item.food) {
+          byFood.set(item.food.id, item);
+        }
+      }
+
+      recipeSection.ingredientSections.forEach((ingSection) => {
+        ingSection.ingredients.forEach((ing) => {
+          const ingredient = ing.ingredient;
+          const foodId = ingredient.food?.id;
+          const item = foodId ? byFood.get(foodId) : undefined;
+
+          // Option D: for foods, HouseholdFoodInventory is the source of truth; the `checked`
+          // flag (which on-hand foods set to false for the legacy flow) must not drop them here.
+          if (shouldSkipForMissing(foodId, ing.checked)) {
+            return;
+          }
+
+          const result = computeMissingItem(foodId, item, ingredient.quantity || 0, scale);
+          console.log("[add-only-missing] food", ingredient.food?.name, "checked", ing.checked, "item", item, "result", result);
+          if (!result.include) {
+            return; // fully covered by stock -> don't add
+          }
+
+          itemsToCreate.push({
+            shoppingListId: listId,
+            quantity: result.quantity,
+            note: ingredient.note || "",
+            foodId: foodId ?? null,
+            unitId: ingredient.unit?.id ?? null,
+            recipeReferences: [
+              {
+                recipeId: recipeSection.recipeId,
+                recipeQuantity: ingredient.quantity || 0,
+                recipeScale: scale,
+                recipeNote: ingredient.note || null,
+              },
+            ],
+          });
+        });
+      });
+    }
+
+    if (itemsToCreate.length === 0) {
+      alert.success(i18n.t("recipe.stock-nothing-missing"));
+      state.shoppingListDialog = false;
+      dialog.value = false;
+      return;
+    }
+
+    const { error } = await api.shopping.items.createMany(itemsToCreate);
+    if (error) {
+      alert.error(i18n.t("recipe.failed-to-add-recipes-to-list"));
+      return;
+    }
+  }
+  catch {
+    alert.error(i18n.t("recipe.failed-to-add-recipes-to-list"));
+    return;
+  }
+  finally {
+    onlyMissingLoading.value = false;
+  }
+
+  alert.success(i18n.t("recipe.successfully-added-to-list"), null, {
+    action: {
+      message: i18n.t("general.view"),
+      onClick: () => router.push(`/shopping-lists/${listId ?? ""}`),
+    },
+  });
+  state.shoppingListDialog = false;
+  dialog.value = false;
 }
 
 async function addRecipesToList() {

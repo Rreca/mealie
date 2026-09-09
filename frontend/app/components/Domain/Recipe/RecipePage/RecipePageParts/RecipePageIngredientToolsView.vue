@@ -5,6 +5,11 @@
       :scale="scale"
       :is-cook-mode="isCookMode"
     />
+    <RecipeStockComparison
+      v-if="showStockComparison"
+      :recipe-id="recipe.id"
+      :scale="scale"
+    />
     <div v-if="!isEditMode && recipe.tools && recipe.tools.length > 0">
       <h2 class="mt-4 text-h5 font-weight-medium opacity-80">
         {{ $t('tool.required-tools') }}
@@ -42,6 +47,7 @@ import { useToolStore } from "~/composables/store";
 import type { NoUndefinedField } from "~/lib/api/types/non-generated";
 import type { Recipe, RecipeTool } from "~/lib/api/types/recipe";
 import RecipeIngredients from "~/components/Domain/Recipe/RecipeIngredients.vue";
+import RecipeStockComparison from "~/components/Domain/Recipe/RecipeStockComparison.vue";
 
 interface RecipeToolWithOnHand extends RecipeTool {
   onHand: boolean;
@@ -61,6 +67,12 @@ const { isOwnGroup } = useLoggedInState();
 const toolStore = isOwnGroup.value ? useToolStore() : null;
 const { user } = usePageUser();
 const { isEditMode } = usePageState(props.recipe.slug);
+
+// Stock comparison only makes sense in the user's own group (household stock is private) and
+// outside edit mode. Cook mode still shows it, since knowing what you're missing is useful there.
+const showStockComparison = computed(
+  () => isOwnGroup.value && !isEditMode.value && !!props.recipe.id,
+);
 
 const recipeTools = ref<RecipeToolWithOnHand[]>([]);
 watch(() => props.recipe.tools, () => {
