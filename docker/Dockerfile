@@ -141,7 +141,7 @@ ENV NLTK_DATA="/nltk_data/"
 COPY ./docker/setup_nltk_data.sh $MEALIE_HOME/setup_nltk_data.sh
 RUN chmod +x $MEALIE_HOME/setup_nltk_data.sh && $MEALIE_HOME/setup_nltk_data.sh
 
-VOLUME [ "$MEALIE_HOME/data/" ]
+#VOLUME [ "$MEALIE_HOME/data/" ]
 ENV APP_PORT=9000
 
 EXPOSE ${APP_PORT}
